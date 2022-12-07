@@ -1,0 +1,264 @@
+#include <SPI.h>                //Library for using SPI Communication 
+#include <mcp2515.h>            //Library for using CAN Communication
+#include <Arduino_FreeRTOS.h>   // Library for using FreeRTOS
+
+struct can_frame canMsg;
+
+MCP2515 mcp2515(53);
+
+int button1 = 9;
+int button2 = 8;
+
+void Can_read(void *pvParameters);
+void Can_write(void *pvParameters);
+void neutral(void);
+void city(void);
+void eco(void);
+
+const unsigned long send_Interval = 20;
+unsigned long previousTime = 0;
+
+unsigned int _150 = 336;
+unsigned int _200 = 512;
+
+unsigned int id_150[8];
+unsigned int id_200[8];
+
+char Ride_mode_Actual;
+unsigned int Battery_Voltage, Throttle_Reference, Throttle_Out , Battery_current, Motor_Speed;
+unsigned int Controller_temperature, Motor_temperature;
+
+void setup()
+{
+    while (!Serial);
+    Serial.begin(115200);
+
+    SPI.begin();
+    pinMode(8,INPUT_PULLUP);  
+    pinMode(9,INPUT_PULLUP);             
+
+    mcp2515.reset();
+    mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); //Sets CAN at speed 500KBPS and Clock 8MHz
+    mcp2515.setNormalMode();
+
+    xTaskCreate(Can_read,"Can_read",1024*3,NULL,1,NULL);     // CAN read Task
+    //xTaskCreate(Can_write,"Can_write",1024,NULL,1,NULL);   // CAN write task 
+
+}
+
+
+void loop()
+{
+//Empty Loop
+}
+
+// * CAN read Task
+
+void Can_read(void *pvParameters){
+
+    // * send Broadcast mode and Boradcasting rate
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    canMsg.can_id  = 0x400;           //CAN id as 0x400
+    canMsg.can_dlc = 2;               //CAN data length as 8
+    canMsg.data[0] = 0x19;
+    canMsg.data[1] = 0x01;
+    mcp2515.sendMessage(&canMsg);     //Sends the CAN message
+    Serial.println("Broadcasting");
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+                                                                                    // TODO: Verify all IDs are present.
+
+    for(;;){
+
+        if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK) {
+
+            if (canMsg.can_id == _150){
+
+                for (int i = 0; i<canMsg.can_dlc; i++)  {  
+
+                    id_150[i] = canMsg.data[i];
+                }
+
+
+                if ( ( (id_150[7] & 0x1C) >> 2) == 0 ){
+
+                    //Ride_mode_Actual = ( (id_150[7] & 0x1C) >> 2);
+                    Serial.println("Neutral Mode");
+
+                }
+
+                if ( ( (id_150[7] & 0x1C) >> 2) == 1 ){
+
+                    //Ride_mode_Actual = ( (id_150[7] & 0x1C) >> 2);
+                    Serial.println("Economy Mode");
+
+                }
+
+                if ( ( (id_150[7] & 0x1C) >> 2) == 2 ){
+
+                    //Ride_mode_Actual = ( (id_150[7] & 0x1C) >> 2);
+                    Serial.println("City Mode");
+
+                }
+
+                if ( ( (id_150[7] & 0x1C) >> 2) == 3 ){
+
+                    //Ride_mode_Actual = ( (id_150[7] & 0x1C) >> 2);
+                    Serial.println("Reverse Mode");
+
+                }
+
+                if ( ( (id_150[7] & 0x1C) >> 2) == 4 ){
+
+                   // Ride_mode_Actual = ( (id_150[7] & 0x1C) >> 2);
+                    Serial.println("Safe Mode");
+
+                }
+
+                                                                                    //TODO: add function to ptint this.
+                // for (int i = 0; i<8; i++)  {  // print the data
+
+                //         Serial.print(id_150[i],HEX);
+                //         Serial.print(" ");               
+                //     }
+                // Serial.println();
+            }
+
+
+            // if (canMsg.can_id == _200){
+
+            //     for (int i = 0; i<canMsg.can_dlc; i++)  {  
+                    
+            //         id_150[i] = canMsg.data[i];
+                    
+            //     }
+
+            //     // for (int i = 0; i<8; i++)  {  // print the data
+
+            //     //         Serial.print(id_200[i],HEX);
+            //     //         Serial.print(" ");
+            //     //     }
+            //     // Serial.println();
+            // } 
+        }       // ! End Recieving Message
+
+
+
+        // int x = digitalRead(button1);
+        // int y = digitalRead(button2);
+        //                                                                         // TODO: add Throttle Zero condition to change Drive MODE
+        // if ((x == 0) & (y == 0)){
+        //     neutral();
+        // }
+        // else if ((x == 0) & (y == 1)){
+        //     city();
+        // }
+        // else if ((x == 1) & (y == 0)){
+        //     eco();
+        // }
+        // else if ((x == 1) & (y == 1)){
+        //     neutral();
+        // }
+
+    }
+
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+} 
+
+
+
+
+void Can_write(void *pvParameters){
+
+    Serial.println("In sendMessage");
+    
+    for(;;){
+
+        int x = digitalRead(button1);
+        int y = digitalRead(button2);
+
+        // TODO: add Throttle Zero condition to change Drive MODE
+
+        if ((x == 0) & (y == 0)){
+            neutral();
+        }
+        else if ((x == 0) & (y == 1)){
+            city();
+        }
+        else if ((x == 1) & (y == 0)){
+            eco();
+        }
+        else if ((x == 1) & (y == 1)){
+            neutral();
+        }
+
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+    }
+
+}
+
+
+
+void city(){
+
+  canMsg.can_id  = 0x100;           //CAN id as 0x100
+
+  canMsg.can_dlc = 8;               //CAN data length as 8
+
+  canMsg.data[0] = 0x66;
+  canMsg.data[1] = 0x26;
+  canMsg.data[2] = 0x00;
+  canMsg.data[3] = 0x00;
+  canMsg.data[4] = 0x00;
+  canMsg.data[5] = 0x00;
+  canMsg.data[6] = 0x00;
+  canMsg.data[7] = 0x02;
+
+  mcp2515.sendMessage(&canMsg);
+  //Serial.println("City");
+
+}
+
+void eco(){
+  canMsg.can_id  = 0x100;           //CAN id as 0x100
+
+  canMsg.can_dlc = 8;               //CAN data length as 8
+
+  canMsg.data[0] = 0x9A;
+  canMsg.data[1] = 0x19;
+  canMsg.data[2] = 0x00;
+  canMsg.data[3] = 0x00;
+  canMsg.data[4] = 0x00;
+  canMsg.data[5] = 0x00;
+  canMsg.data[6] = 0x00;
+  canMsg.data[7] = 0x01;    
+
+  mcp2515.sendMessage(&canMsg);     //Sends the CAN message
+  //Serial.println("eco");
+
+}
+
+void neutral(){
+  canMsg.can_id  = 0x100;           //CAN id as 0x100
+
+  canMsg.can_dlc = 8;               //CAN data length as 8
+
+  canMsg.data[0] = 0x00;
+  canMsg.data[1] = 0x00;
+  canMsg.data[2] = 0x00;
+  canMsg.data[3] = 0x00;
+  canMsg.data[4] = 0x00;
+  canMsg.data[5] = 0x00;
+  canMsg.data[6] = 0x00;
+  canMsg.data[7] = 0x00;
+
+  mcp2515.sendMessage(&canMsg);     //Sends the CAN message
+  //Serial.println("neutral");
+
+}
+
+
+
+
+
