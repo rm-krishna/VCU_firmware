@@ -35,6 +35,8 @@ void sport(void);
 void reverse(void);
 void Process_data(can_frame *frame);
 void precharge(void);
+void contactor_control(int state_);
+void GPIO_init(void);
 void CAN_init(void);
 void tasks(void);
 
@@ -63,22 +65,18 @@ bool cal_motor_data = true;
 
 
 
-
-
-
 void setup()
 {
     while (!Serial);
-    Serial.begin(115200);
+    Serial.begin(9600);
     SPI.begin();
+
+    GPIO_init();
 
     precharge();
     vTaskDelay(100 / portTICK_PERIOD_MS);
     CAN_init();
-    init_GPIOs();
     tasks();  
-
-   
 
 }
 
@@ -87,6 +85,59 @@ void loop()
 {
 //Empty Loop
 } 
+
+
+void GPIO_init(){
+
+    pinMode(button1,INPUT_PULLUP);  
+    pinMode(button2,INPUT_PULLUP); 
+
+    pinMode(precharge_mosfet,OUTPUT);
+    pinMode(discharge_comtactor,OUTPUT);
+
+    Serial.println("GPiO_init done");
+
+}
+
+
+void precharge(void){
+
+    digitalWrite(discharge_comtactor , LOW);
+    digitalWrite(precharge_mosfet,HIGH);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    digitalWrite(precharge_mosfet,LOW);                          // TODO check MCU Voltage
+    Serial.print("precharge done\n");
+                                                                //close the contactor
+    digitalWrite(discharge_comtactor, HIGH); //
+    Serial.print("discharge contactor engage \n");
+}
+
+void CAN_init(){
+
+    mcp2515.reset();
+    mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); //Sets CAN at speed 500KBPS and Clock 8MHz
+    mcp2515.setNormalMode();
+
+    //  send Broadcast mode and Boradcasting rate
+
+    //vTaskDelay(1000 / portTICK_PERIOD_MS);
+    sendFrame.can_id  = 0x400;           //CAN id as 0x400
+    sendFrame.can_dlc = 2;               //CAN data length as 8
+    sendFrame.data[0] = 0x19;
+    sendFrame.data[1] = 0x01;
+    mcp2515.sendMessage(&sendFrame);     //Sends the CAN message
+    Serial.println("Broadcasting");
+    
+                                                                                    // TODO: Verify all IDs are present.
+}
+
+
+void tasks(){
+
+    xTaskCreate(Can_read,"Can_read",1024*3,NULL,1,NULL);     // CAN read Task
+    xTaskCreate(Can_write,"Can_write",1024,NULL,2,NULL);   // CAN write task 
+}
+
 
 // * CAN read Task
 
@@ -362,61 +413,10 @@ void reverse(){
   
 }
 
-void initialise(){
-
-  
-}
-
-
-void CAN_init(){
-
-    mcp2515.reset();
-    mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); //Sets CAN at speed 500KBPS and Clock 8MHz
-    mcp2515.setNormalMode();
-
-    //  send Broadcast mode and Boradcasting rate
-
-    //vTaskDelay(1000 / portTICK_PERIOD_MS);
-    sendFrame.can_id  = 0x400;           //CAN id as 0x400
-    sendFrame.can_dlc = 2;               //CAN data length as 8
-    sendFrame.data[0] = 0x19;
-    sendFrame.data[1] = 0x01;
-    mcp2515.sendMessage(&sendFrame);     //Sends the CAN message
-    Serial.println("Broadcasting");
-    
-                                                                                    // TODO: Verify all IDs are present.
-}
-
-void precharge(void){
-
-    digitalWrite(precharge_mosfet,HIGH);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    digitalWrite(precharge_mosfet,LOW);                          // TODO check MCU Voltage
-    contactor_control(true);                                    //close the contactor
-}
-
-void contactor_control(bool state_ ){
-
-    digitalWrite(discharge_comtactor,state_);
-}
 
 
 
-void tasks(){
 
-    xTaskCreate(Can_read,"Can_read",1024*3,NULL,1,NULL);     // CAN read Task
-    xTaskCreate(Can_write,"Can_write",1024,NULL,2,NULL);   // CAN write task 
-}
-
-void init_GPIOs(){
-
-    pinMode(button1,INPUT_PULLUP);  
-    pinMode(button2,INPUT_PULLUP); 
-
-    pinMode(precharge_mosfet,OUTPUT);
-    pinMode(discharge_comtactor,OUTPUT);
-
-}
 
 
 
