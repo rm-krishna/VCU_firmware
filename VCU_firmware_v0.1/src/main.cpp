@@ -1,6 +1,8 @@
+#include <Arduino.h>                //Library for using arduino
 #include <SPI.h>                //Library for using SPI Communication 
 #include <mcp2515.h>            //Library for using CAN Communication
 #include <Arduino_FreeRTOS.h>   // Library for using FreeRTOS
+#include "task.h"
 
 struct can_frame recieveFrame;
 struct can_frame sendFrame;
@@ -34,16 +36,11 @@ void eco(void);
 void sport(void);
 void reverse(void);
 void Process_data(can_frame *frame);
-void precharge(void);
-void contactor_control(int state_);
+void precharge(void *pvParameters);
 void GPIO_init(void);
 void CAN_init(void);
 void tasks(void);
 
-
-
-const unsigned long send_Interval = 20;
-unsigned long previousTime = 0;
 
 unsigned int _150 = 336;
 unsigned int _200 = 512;
@@ -62,65 +59,83 @@ double Thr_Ref = 0.019608;
 double volt_factor = 0.450980;
 double Throttle_Reference,Battery_Voltage;
 bool cal_motor_data = true;
+int counter = 0;
+bool precharge_flag;
+
+TaskHandle_t TaskHandle_precharge;                                        // handler for Task2
 
 
 
-void setup()
-{
+void setup(void){
+    
     while (!Serial);
-    Serial.begin(9600);
+    Serial.begin(115200);
     SPI.begin();
 
     GPIO_init();
-
-    precharge();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    CAN_init();
-    tasks();  
-
+    tasks(); 
+    
+    // start scheduler - should never return
+    vTaskStartScheduler();
+    Serial.println(F("Scheduler Returned"));
 }
 
 
-void loop()
-{
-//Empty Loop
+void loop(){
+    // Empty. Things are done in Tasks.
 } 
 
 
-void GPIO_init(){
-
-    pinMode(button1,INPUT_PULLUP);  
-    pinMode(button2,INPUT_PULLUP); 
+void GPIO_init(void){
 
     pinMode(precharge_mosfet,OUTPUT);
     pinMode(discharge_comtactor,OUTPUT);
-
     Serial.println("GPiO_init done");
 
 }
 
 
-void precharge(void){
+void precharge(void *pvParameters){
+    
+    digitalWrite(discharge_comtactor, LOW);
+    digitalWrite(precharge_mosfet, HIGH);
+    //Serial.println("in precharge ");
+                                                            // TODO check MCU Voltage
+    for(;;){
 
-    digitalWrite(discharge_comtactor , LOW);
-    digitalWrite(precharge_mosfet,HIGH);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    digitalWrite(precharge_mosfet,LOW);                          // TODO check MCU Voltage
-    Serial.print("precharge done\n");
-                                                                //close the contactor
-    digitalWrite(discharge_comtactor, HIGH); //
-    Serial.print("discharge contactor engage \n");
+        if (counter == 2){
+
+            digitalWrite(discharge_comtactor, HIGH);
+            //Serial.println("discharge_comtactor");
+        }
+        if (counter == 3){
+
+            digitalWrite(precharge_mosfet, LOW);
+           // Serial.println("precharge done");
+        }
+        if (counter == 4){
+             
+             xTaskCreate(Can_write,"Can_write",1024,NULL,2,NULL);   // CAN write task 
+             xTaskCreate(Can_read,"Can_read",1024*3,NULL,1,NULL);     // CAN read Task
+             
+             vTaskDelete(TaskHandle_precharge);
+              //Serial.println("Task Deleted");
+        }
+
+      vTaskDelay(pdMS_TO_TICKS(100));
+      counter++; //
+    }
+                                                        
 }
 
-void CAN_init(){
+
+void CAN_init(void){
 
     mcp2515.reset();
     mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ); //Sets CAN at speed 500KBPS and Clock 8MHz
     mcp2515.setNormalMode();
 
     //  send Broadcast mode and Boradcasting rate
-
-    //vTaskDelay(1000 / portTICK_PERIOD_MS);
     sendFrame.can_id  = 0x400;           //CAN id as 0x400
     sendFrame.can_dlc = 2;               //CAN data length as 8
     sendFrame.data[0] = 0x19;
@@ -134,15 +149,15 @@ void CAN_init(){
 
 void tasks(){
 
-    xTaskCreate(Can_read,"Can_read",1024*3,NULL,1,NULL);     // CAN read Task
-    xTaskCreate(Can_write,"Can_write",1024,NULL,2,NULL);   // CAN write task 
+    xTaskCreate(precharge,"precharge",128,NULL,3,&TaskHandle_precharge);     // CAN read Task
+    
 }
 
 
 // * CAN read Task
 
 void Can_read(void *pvParameters){
-
+Serial.println("In read");
 
     while(1){
 
@@ -160,6 +175,8 @@ void Can_read(void *pvParameters){
 
 
 void Can_write(void *pvParameters){
+    
+    CAN_init();
 
     Serial.println("In sendMessage");
     
@@ -412,6 +429,11 @@ void reverse(){
   mcp2515.sendMessage(&sendFrame);     //Sends the CAN message
   
 }
+
+
+
+
+
 
 
 
