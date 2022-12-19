@@ -61,6 +61,7 @@ double Throttle_Reference,Battery_Voltage;
 bool cal_motor_data = true;
 int counter = 0;
 bool precharge_flag;
+double motor_temp_factor = 0.390625;
 
 TaskHandle_t TaskHandle_precharge;                                        // handler for Task2
 
@@ -183,6 +184,10 @@ void Can_write(void *pvParameters){
     for(;;){
 
         buttonState = digitalRead(button1);
+        buttonState2= digitalRead(button2);
+        if((buttonState && buttonState2)==1){
+            buttonPushCounter = 1;                              //moves to eco mode
+        }
 
                                                                 // compare the buttonState to its previous state
         if (buttonState != lastButtonState) {
@@ -333,6 +338,29 @@ void Process_data(can_frame *frame){
 
         // }
     }
+    if(recieveFrame.can_id == _250){
+        for (int i = 0; i<recieveFrame.can_dlc; i++)  {  
+            
+            id_250[i] = recieveFrame.data[i];
+        }
+        if(cal_motor_data){
+            Motor_temperature = id_250[1];
+            Motor_temperature = Motor_temperature << 8;
+            Temp = id_150[0];
+            Motor_temperature = (Motor_temperature + Temp)* motor_temp_factor;
+
+            if (Motor_temperature>160){
+            neutral();
+            Serial.println("Neutral Mode");
+            }
+            if(Motor_temperature<160 && Motor_temperature>=151){
+            Serial.println("Warning");
+            }
+            if(Motor_temperature=<-5){
+            Serial.println("Under Temperature");
+            }
+            }
+        }
 }
 
 
