@@ -44,9 +44,16 @@ void tasks(void);
 
 unsigned int _150 = 336;
 unsigned int _200 = 512;
+unsigned int _250 = 592
+unsigned int _650 = 1616;
+unsigned int _750 = 1872;
+
 
 unsigned int id_150[8];
 unsigned int id_200[8];
+unsigned int id_250[8];
+unsigned int id_650[8];
+unsigned int id_750[8];
 
 char Ride_mode_Actual;
 unsigned int Throttle_Out , Battery_current, Motor_Speed;
@@ -251,8 +258,8 @@ void Can_write(void *pvParameters){
 }
 
 
-
-void Process_data(can_frame *frame){
+if(receiveFrame.can_id == _150 || receiveFrame.can_id == _200 || receiveFrame.can_id == _250){
+    void Process_data(can_frame *frame){
 
     if (recieveFrame.can_id == _150){
 
@@ -361,6 +368,21 @@ void Process_data(can_frame *frame){
             }
             }
         }
+    }
+
+}
+else if(recieveFrame.can_id == _650){
+    for( int i= 0; i<receiveFrame.can_dlc;i++){
+        id_650[i] = recieveFrame.data[i];
+    }
+}
+else if(receiveFrame.can_id == _750){
+    for(int i=0; i<receive.can_dlc; i++){
+        id_750[i]=recieveFrame.data[i];
+    }
+}
+else {
+    Serial.println("Error!")
 }
 
 
